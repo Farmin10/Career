@@ -1,0 +1,69 @@
+﻿using career.DAL.Extensions;
+using career.DAL.Utilities.Security.Encryption;
+using career.Entity.Concrete;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System;
+using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace career.DAL.Utilities.Security.JWT
+{
+    public class JwtHelper : ITokenHelper
+    {
+        public IConfiguration Configuration { get; }
+        private TokenOptions _tokenOptions;
+        private DateTime _accessTokenExpiration;
+        public JwtHelper(IConfiguration configuration)
+        {
+            Configuration = configuration;
+            _tokenOptions = Configuration.GetSection("TokenOptions").Get<TokenOptions>();
+
+        }
+        public AccessToken CreateToken(User user)
+        {
+            _accessTokenExpiration = DateTime.Now.AddDays(365);
+            var securityKey = SecurityKeyHelper.CreateSecurityKey(_tokenOptions.SecurityKey);
+            var signingCredentials = SigningCredentialsHelper.CreateSigningCredentials(securityKey);
+            var jwt = CreateJwtSecurityToken(_tokenOptions, user, signingCredentials);
+            var jwtSecurityTokenHandler = new JwtSecurityTokenHandler();
+            var token = jwtSecurityTokenHandler.WriteToken(jwt);
+
+            return new AccessToken
+            {
+                Token = token,
+                Expiration = _accessTokenExpiration,
+                Id = user.UserId,
+                UserName = user.UserName
+            };
+
+        }
+
+        public JwtSecurityToken CreateJwtSecurityToken(TokenOptions tokenOptions, User user,
+            SigningCredentials signingCredentials)
+        {
+            var jwt = new JwtSecurityToken(
+                issuer: tokenOptions.Issuer,
+                audience: tokenOptions.Audience,
+                expires: _accessTokenExpiration,
+                claims: SetClaims(user),
+                signingCredentials: signingCredentials,
+                notBefore: DateTime.UtcNow
+            );
+            return jwt;
+        }
+
+        private IEnumerable<Claim> SetClaims(User user)
+        {
+            var claims = new List<Claim>();
+            claims.AddNameIdentifier(user.UserId.ToString());
+            claims.AddUserName($"{user.UserName}");
+
+            return claims;
+        }
+    }
+}
